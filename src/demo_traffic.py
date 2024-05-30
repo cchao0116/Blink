@@ -57,7 +57,7 @@ def evaluate(net, graph, dataloader, scaler):
             mask = th.sign(y_true)
             mae = th.abs(y_pred - y_true) * mask
             rmse = th.square(y_pred - y_true) * mask
-            mape = mae / th.where(y_true == 0., th.zeros_like(y_true), y_true)
+            mape = mae / th.where(y_true == 0., th.ones_like(y_true), y_true)
 
             T += th.sum(mask, dim=(0, 2)).cpu().numpy()
             MAE += th.sum(mae, dim=(0, 2)).cpu().numpy()
