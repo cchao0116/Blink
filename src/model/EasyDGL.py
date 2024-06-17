@@ -522,7 +522,8 @@ class NodeRegressor(nn.Module):
         self.num_timesteps_out = config.num_timesteps_out
 
         self.mark_lookup = th.from_numpy(config.mark_lookup).float()
-        self.tcoding = TimeSinusoidCoding(config.num_units)
+        self.rel_tcoding = TimeSinusoidCoding(config.num_units)
+        self.abs_tcoding = nn.Linear(1, config.num_units, bias=False)
 
         num_units = config.num_units
         num_features = config.num_features
@@ -635,13 +636,18 @@ class NodeRegressor(nn.Module):
 
         # ==== AIAConv ====
         # tcodings: 1, 13, num_units
-        timestamps = th.arange(1 + self.num_timesteps_out).unsqueeze(0)
-        tcodings = self.tcoding(timestamps.to(nfeat.device))
+        relative_timestamp = th.arange(1 + self.num_timesteps_out).unsqueeze(0).to(nfeat.device)
+        tcodings = self.rel_tcoding(relative_timestamp)
+        # abs_tcoding_src: num_timesteps_out, num_nodes, batch_size, num_units
+        absolute_timestamp = feat['y_cov']
+        abs_tcoding_src = self.abs_tcoding(absolute_timestamp)
+        abs_tcoding_src = th.cat(abs_tcoding_src.chunk(self.num_timesteps_out, dim=1), dim=0)
+        abs_tcoding_src = abs_tcoding_src.squeeze(1).permute(1, 0, 2)
         # x_src: num_nodes, num_timesteps_out * batch_size, num_units
         # tcodings_src: num_units
-        tcodings_src = tcodings[0, 0]
-        x_src = layer_previous + tcodings_src
-        x_src = x_src.tile(1, self.num_timesteps_out, 1)
+        rel_tcodings_src = tcodings[0, 0]
+        x_src = layer_previous + rel_tcodings_src
+        x_src = x_src.tile(1, self.num_timesteps_out, 1) + abs_tcoding_src
         # tcodings_dst: batch_size, num_timesteps_out, num_units
         tcodings_dst = tcodings[:, 1:].tile(nfeat.shape[1], 1, 1)
         # => num_timesteps_out * batch_size, 1, num_units
